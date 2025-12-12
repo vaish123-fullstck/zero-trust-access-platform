@@ -5,7 +5,7 @@ FROM golang:1.24 AS build
 
 WORKDIR /app
 
-# Install build deps (Debian/Ubuntu uses apt-get, not apk)
+# Install build deps (use apt-get on Debian/Ubuntu)
 RUN apt-get update \
   && apt-get install -y --no-install-recommends git \
   && rm -rf /var/lib/apt/lists/*
