@@ -17,8 +17,8 @@ RUN go mod download
 # Copy the rest of the source
 COPY . .
 
-# Build the binary
-RUN go build -o server ./cmd/server
+# Build the binary from main.go at the module root
+RUN go build -o server .
 
 # 2. Runtime stage
 FROM alpine:3.20
