@@ -1,12 +1,14 @@
 # backend/Dockerfile
 
 # 1. Build stage
-FROM golang:1.24-alpine AS build
+FROM golang:1.24 AS build
 
 WORKDIR /app
 
-# Install build deps
-RUN apk add --no-cache git
+# Install build deps (Debian/Ubuntu uses apt-get, not apk)
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy go mod files first
 COPY go.mod go.sum ./
