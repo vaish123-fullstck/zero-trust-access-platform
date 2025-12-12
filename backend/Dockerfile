@@ -28,8 +28,8 @@ WORKDIR /app
 # Add CA certs for HTTPS outbound if needed
 RUN apk add --no-cache ca-certificates
 
+# Copy only the built binary
 COPY --from=build /app/server /app/server
-COPY --from=build /app/config /app/config
 
 ENV APP_ENV=prod
 ENV APP_PORT=8080
