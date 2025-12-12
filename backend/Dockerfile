@@ -1,7 +1,8 @@
 # backend/Dockerfile
 
 # 1. Build stage
-FROM golang:1.22-alpine AS build
+FROM golang:1.24 AS build
+
 WORKDIR /app
 
 # Install build deps
