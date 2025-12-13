@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"time"
 
+	"zero-trust-access-platform/backend/internal/awsroles"
 	"zero-trust-access-platform/backend/internal/config"
+	awshandlers "zero-trust-access-platform/backend/internal/http/handlers"
 	"zero-trust-access-platform/backend/internal/middleware"
 )
 
@@ -74,6 +76,16 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/auth/mfa/verify",
 		s.cors(
 			middleware.Auth(s.jwtSecret, s.handleMFAVerify),
+		),
+	)
+
+	// AWS roles (authenticated)
+	awsRepo := awsroles.NewRepository(s.db)
+	awsHandler := awshandlers.NewAwsRolesHandler(awsRepo)
+
+	mux.HandleFunc("/me/aws/roles",
+		s.cors(
+			middleware.Auth(s.jwtSecret, awsHandler.ListMyAwsRoles),
 		),
 	)
 }

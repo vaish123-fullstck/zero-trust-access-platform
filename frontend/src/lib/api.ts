@@ -14,8 +14,11 @@ export type AuthUser = {
 };
 
 export type AuthResponse = {
-  token: string;
-  user: AuthUser;
+  token?: string;
+  user?: AuthUser;
+  mfa_required?: boolean;
+  enrollment_required?: boolean;
+  temp_token?: string;
 };
 
 // Resources
@@ -50,7 +53,10 @@ export async function fetchHealth(): Promise<Health> {
   return res.json();
 }
 
-export async function login(email: string, password: string): Promise<AuthResponse> {
+export async function login(
+  email: string,
+  password: string,
+): Promise<AuthResponse> {
   const res = await fetch(`${API_BASE_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

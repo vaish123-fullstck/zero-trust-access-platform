@@ -18,6 +18,7 @@ import {
   MfaVerifyPanel,
   type MfaState,
 } from "./features/auth/MFAVerifyPanel";
+import { MfaEnrollPanel } from "./features/auth/MfaEnrollPanel";
 import { MfaSettings } from "./features/auth/MfaSettings";
 
 type AuthState = {
@@ -68,7 +69,7 @@ function AppShell({
       style={{
         display: "flex",
         minHeight: "100vh",
-        background: "#020617",
+        background: "radial-gradient(circle at top, #0f172a, #020617)",
         color: "#e5e7eb",
       }}
     >
@@ -80,6 +81,8 @@ function AppShell({
           display: "flex",
           flexDirection: "column",
           gap: "1.5rem",
+          backdropFilter: "blur(12px)",
+          background: "rgba(15,23,42,0.8)",
         }}
       >
         <div>
@@ -234,7 +237,6 @@ function OverviewPage({
         )}
       </section>
 
-      {/* New: Security / MFA section only when logged in */}
       {auth.user && auth.token && (
         <section>
           <h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
@@ -399,6 +401,12 @@ const App: React.FC = () => {
     user: null,
   });
 
+  const [needsEnroll, setNeedsEnroll] = useState(false);
+  const [enrollData, setEnrollData] = useState<{
+    otpauth_url: string;
+    secret: string;
+  } | null>(null);
+
   useEffect(() => {
     fetchHealth()
       .then(setHealth)
@@ -431,6 +439,8 @@ const App: React.FC = () => {
     localStorage.setItem("zt_user", JSON.stringify(res.user));
     setError(null);
     setMfa({ active: false, tempToken: null, user: null });
+    setNeedsEnroll(false);
+    setEnrollData(null);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -438,12 +448,14 @@ const App: React.FC = () => {
     try {
       const res = await login(email, password);
 
-      if ((res as any).mfa_required) {
-        const temp = (res as any).temp_token as string | undefined;
+      if (res.mfa_required) {
+        const temp = res.temp_token;
         if (!temp || !res.user) {
           setError("MFA flow returned invalid data");
           return;
         }
+
+        setNeedsEnroll(!!res.enrollment_required);
         setMfa({
           active: true,
           tempToken: temp,
@@ -453,6 +465,7 @@ const App: React.FC = () => {
         return;
       }
 
+      // Fallback (should not happen with mandatory MFA)
       handleFinalAuth(res);
     } catch (err: any) {
       setError(err.message ?? "Login failed");
@@ -463,6 +476,9 @@ const App: React.FC = () => {
     e.preventDefault();
     try {
       const res = await signup(fullName, email, password);
+      // With your current backend, signup returns a token.
+      // You can either accept that as fully logged-in or
+      // force a fresh login+MFA. For now, keep as-is:
       handleFinalAuth(res);
     } catch (err: any) {
       setError(err.message ?? "Signup failed");
@@ -475,6 +491,8 @@ const App: React.FC = () => {
     localStorage.removeItem("zt_token");
     localStorage.removeItem("zt_user");
     setMfa({ active: false, tempToken: null, user: null });
+    setNeedsEnroll(false);
+    setEnrollData(null);
   };
 
   const handleUserRoleChange = async (id: number, role: "user" | "admin") => {
@@ -489,48 +507,187 @@ const App: React.FC = () => {
     }
   };
 
+  const isAuthed = !!auth.user && !!auth.token;
+
+  // ---------- Unauthenticated: full-screen auth (login/signup + MFA) ----------
+  if (!isAuthed) {
+    // helper to start enrollment during login MFA
+    const startLoginEnroll = async () => {
+      if (!mfa.tempToken) return;
+      try {
+        const res = await fetch("http://localhost:8080/auth/mfa/enroll", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${mfa.tempToken}`,
+          },
+        });
+        if (!res.ok) {
+          setError("Failed to start MFA enrollment.");
+          return;
+        }
+        const data = (await res.json()) as {
+          otpauth_url: string;
+          secret: string;
+        };
+        setEnrollData(data);
+      } catch (e: any) {
+        setError(e.message ?? "Failed to start MFA enrollment.");
+      }
+    };
+
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          background: "radial-gradient(circle at top, #0f172a, #020617)",
+          color: "#e5e7eb",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "2rem",
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            maxWidth: 420,
+            background: "#020617",
+            borderRadius: "1.25rem",
+            border: "1px solid #1f2933",
+            padding: "2rem 2.25rem",
+            boxShadow: "0 24px 80px rgba(15,23,42,0.8)",
+          }}
+        >
+          <div style={{ marginBottom: "1.5rem" }}>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                padding: "0.25rem 0.75rem",
+                borderRadius: "999px",
+                background:
+                  "linear-gradient(90deg, rgba(56,189,248,0.15), rgba(249,115,22,0.15))",
+                fontSize: "0.75rem",
+                color: "#e5e7eb",
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "999px",
+                  background: "#22c55e",
+                }}
+              />
+              Zero Trust Access Platform
+            </div>
+            <h1
+              style={{
+                marginTop: "0.9rem",
+                fontSize: "1.6rem",
+                fontWeight: 600,
+              }}
+            >
+              Sign in to your console
+            </h1>
+            <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
+              Strong identity, MFA, and least‑privilege access in one place.
+            </p>
+          </div>
+
+          {!mfa.active && authMode === "login" && (
+            <LoginForm
+              email={email}
+              setEmail={setEmail}
+              password={password}
+              setPassword={setPassword}
+              onSubmit={handleLogin}
+              switchToSignup={() => setAuthMode("signup")}
+            />
+          )}
+
+          {!mfa.active && authMode === "signup" && (
+            <SignupForm
+              fullName={fullName}
+              setFullName={setFullName}
+              email={email}
+              setEmail={setEmail}
+              password={password}
+              setPassword={setPassword}
+              onSubmit={handleSignup}
+              switchToLogin={() => setAuthMode("login")}
+            />
+          )}
+
+          {mfa.active && needsEnroll && (
+            <>
+              {!enrollData && (
+                <button
+                  type="button"
+                  onClick={startLoginEnroll}
+                  style={{
+                    width: "100%",
+                    padding: "0.55rem 0.8rem",
+                    borderRadius: "0.9rem",
+                    border: "none",
+                    background:
+                      "linear-gradient(90deg, #22c55e, #38bdf8)",
+                    color: "#020617",
+                    fontSize: "0.86rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 12px 30px rgba(34,197,94,0.35)",
+                    marginTop: "0.5rem",
+                  }}
+                >
+                  Start MFA enrollment
+                </button>
+              )}
+
+              {enrollData && (
+                <MfaEnrollPanel
+                  otpauthUrl={enrollData.otpauth_url}
+                  secret={enrollData.secret}
+                  onContinue={() => {
+                    // after showing QR, go to verify
+                    setNeedsEnroll(false);
+                  }}
+                />
+              )}
+            </>
+          )}
+
+          {mfa.active && !needsEnroll && (
+            <MfaVerifyPanel
+              mfa={mfa}
+              onSuccess={handleFinalAuth}
+              onCancel={() =>
+                setMfa({ active: false, tempToken: null, user: null })
+              }
+            />
+          )}
+
+          {error && (
+            <p
+              style={{
+                color: "#f97316",
+                marginTop: "0.75rem",
+                fontSize: "0.85rem",
+              }}
+            >
+              Error: {error}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- Authenticated: console shell + routes ----------
   return (
     <AppShell auth={auth} onLogout={handleLogout}>
-      {!auth.user && !mfa.active && authMode === "login" && (
-        <LoginForm
-          email={email}
-          setEmail={setEmail}
-          password={password}
-          setPassword={setPassword}
-          onSubmit={handleLogin}
-          switchToSignup={() => setAuthMode("signup")}
-        />
-      )}
-
-      {!auth.user && !mfa.active && authMode === "signup" && (
-        <SignupForm
-          fullName={fullName}
-          setFullName={setFullName}
-          email={email}
-          setEmail={setEmail}
-          password={password}
-          setPassword={setPassword}
-          onSubmit={handleSignup}
-          switchToLogin={() => setAuthMode("login")}
-        />
-      )}
-
-      {!auth.user && mfa.active && (
-        <MfaVerifyPanel
-          mfa={mfa}
-          onSuccess={handleFinalAuth}
-          onCancel={() =>
-            setMfa({ active: false, tempToken: null, user: null })
-          }
-        />
-      )}
-
-      {error && (
-        <p style={{ color: "#f97316", marginTop: "0.75rem", fontSize: "0.85rem" }}>
-          Error: {error}
-        </p>
-      )}
-
       <Routes>
         <Route
           path="/"
@@ -556,6 +713,17 @@ const App: React.FC = () => {
           }
         />
       </Routes>
+      {error && (
+        <p
+          style={{
+            color: "#f97316",
+            marginTop: "0.75rem",
+            fontSize: "0.85rem",
+          }}
+        >
+          Error: {error}
+        </p>
+      )}
     </AppShell>
   );
 };

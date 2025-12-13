@@ -69,7 +69,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// new signups are regular users
+	// new signups are regular users; MFA will still be required on first login
 	var u models.User
 	err = s.db.QueryRow(
 		`INSERT INTO users (email, full_name, role, password_hash)
@@ -82,6 +82,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Do NOT issue a long‑lived token here; user must still enroll+verify MFA
 	token, err := s.generateToken(u)
 	if err != nil {
 		http.Error(w, "failed to create token", http.StatusInternalServerError)
@@ -96,9 +97,11 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /auth/login
-// Step 1 of MFA flow:
-// - if mfa_enabled = false => returns {token,user}
-// - if mfa_enabled = true  => returns {mfa_required:true, temp_token, user}
+// Mandatory MFA flow:
+// - Always returns { mfa_required: true, enrollment_required: bool, temp_token, user }
+// - Client must then:
+//   - if enrollment_required: call /auth/mfa/enroll, show QR, then /auth/mfa/verify
+//   - else: directly call /auth/mfa/verify
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -114,13 +117,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var u models.User
 	var passwordHash string
 	var mfaEnabled bool
+	var mfaSecret sql.NullString
 
 	err := s.db.QueryRow(
-		`SELECT id, email, full_name, role, password_hash, created_at, mfa_enabled
+		`SELECT id, email, full_name, role, password_hash, created_at, mfa_enabled, mfa_secret
          FROM users
          WHERE email = $1`,
 		req.Email,
-	).Scan(&u.ID, &u.Email, &u.FullName, &u.Role, &passwordHash, &u.CreatedAt, &mfaEnabled)
+	).Scan(&u.ID, &u.Email, &u.FullName, &u.Role, &passwordHash, &u.CreatedAt, &mfaEnabled, &mfaSecret)
 	if err == sql.ErrNoRows {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
@@ -134,38 +138,27 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If MFA is NOT enabled, behave like before: return full JWT.
-	if !mfaEnabled {
-		token, err := s.generateToken(u)
-		if err != nil {
-			http.Error(w, "failed to create token", http.StatusInternalServerError)
-			return
-		}
+	// MFA is mandatory for everyone.
+	// If there is no stored secret yet, client must enroll before verifying.
+	enrollmentRequired := !mfaSecret.Valid || mfaSecret.String == ""
 
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(authResponse{
-			Token: token,
-			User:  u,
-		})
-		return
-	}
-
-	// MFA IS enabled: issue a temp token and tell the client to call /auth/mfa/verify.
-	tempToken, err := s.generateToken(u) // could be shorter‑lived in future
+	// Issue a short‑lived temp token used only for MFA enroll/verify calls.
+	tempToken, err := s.generateToken(u)
 	if err != nil {
 		http.Error(w, "failed to create temp token", http.StatusInternalServerError)
 		return
 	}
 
 	s.writeJSON(w, http.StatusOK, map[string]any{
-		"mfa_required": true,
-		"temp_token":   tempToken,
-		"user":         u,
+		"mfa_required":        true,
+		"enrollment_required": enrollmentRequired,
+		"temp_token":          tempToken,
+		"user":                u,
 	})
 }
 
-// POST /auth/mfa/enroll (authenticated)
-// Used from settings screen to show QR and store mfa_secret.
+// POST /auth/mfa/enroll (authenticated by temp or full token)
+// Used to generate QR and store mfa_secret.
 func (s *Server) handleMFAEnroll(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -220,7 +213,7 @@ func (s *Server) handleMFAEnroll(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// POST /auth/mfa/verify (authenticated)
+// POST /auth/mfa/verify (authenticated by temp or full token)
 // Step 2 of MFA flow: client calls with temp_token + 6‑digit code.
 // On success, sets mfa_enabled=true and returns final JWT.
 func (s *Server) handleMFAVerify(w http.ResponseWriter, r *http.Request) {

@@ -53,60 +53,96 @@ export function MfaVerifyPanel({ mfa, onSuccess, onCancel }: Props) {
   }
 
   return (
-    <section
-      style={{
-        marginTop: "1.5rem",
-        padding: "1.25rem 1.5rem",
-        borderRadius: "0.9rem",
-        border: "1px solid #1f2933",
-        background:
-          "radial-gradient(circle at top left, #1f2937, #020617 55%, #020617)",
-        maxWidth: 360,
-        boxShadow: "0 18px 40px rgba(0,0,0,0.45)",
-      }}
-    >
-      <h2 style={{ fontSize: "1.05rem", marginBottom: "0.3rem" }}>
-        Multi‑factor authentication
-      </h2>
-      <p
+    <section>
+      <div
         style={{
-          fontSize: "0.8rem",
-          opacity: 0.75,
           marginBottom: "0.9rem",
         }}
       >
-        Hi {mfa.user.full_name}. Open your authenticator app and enter the
-        current 6‑digit code.
-      </p>
-
-      <form onSubmit={handleSubmit}>
-        <label style={{ fontSize: "0.8rem" }}>
-          One‑time code
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="\d*"
-            maxLength={6}
-            value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            padding: "0.2rem 0.65rem",
+            borderRadius: "999px",
+            background:
+              "linear-gradient(90deg, rgba(56,189,248,0.18), rgba(34,197,94,0.18))",
+            fontSize: "0.75rem",
+          }}
+        >
+          <span
             style={{
-              width: "100%",
-              marginTop: "0.35rem",
-              marginBottom: "0.7rem",
-              padding: "0.5rem 0.7rem",
-              borderRadius: "0.6rem",
-              border: "1px solid #1f2933",
-              background: "#020617",
-              color: "#e5e7eb",
-              letterSpacing: "0.2em",
-              textAlign: "center",
-              fontSize: "0.95rem",
+              width: 7,
+              height: 7,
+              borderRadius: "999px",
+              background: "#22c55e",
             }}
           />
+          Step 2 · Multi‑factor verification
+        </div>
+        <h2
+          style={{
+            fontSize: "1.05rem",
+            marginTop: "0.7rem",
+            marginBottom: "0.25rem",
+          }}
+        >
+          Enter your one‑time code
+        </h2>
+        <p
+          style={{
+            fontSize: "0.8rem",
+            opacity: 0.75,
+          }}
+        >
+          Hi {mfa.user.full_name}. Open your authenticator app and enter the
+          current 6‑digit code to finish signing in.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        <label
+          style={{
+            fontSize: "0.78rem",
+            display: "block",
+            marginBottom: "0.35rem",
+            opacity: 0.9,
+          }}
+        >
+          One‑time code
         </label>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="\d*"
+          maxLength={6}
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+          placeholder="123 456"
+          style={{
+            width: "100%",
+            marginBottom: "0.7rem",
+            padding: "0.5rem 0.7rem",
+            borderRadius: "0.7rem",
+            border: "1px solid #1f2933",
+            background: "#020617",
+            color: "#e5e7eb",
+            letterSpacing: "0.25em",
+            textAlign: "center",
+            fontSize: "0.95rem",
+            outline: "none",
+          }}
+        />
 
         {error && (
-          <p style={{ color: "#f97316", fontSize: "0.8rem", marginBottom: 8 }}>
+          <p
+            style={{
+              color: "#f97316",
+              fontSize: "0.8rem",
+              marginBottom: "0.5rem",
+            }}
+          >
             {error}
           </p>
         )}
@@ -124,14 +160,17 @@ export function MfaVerifyPanel({ mfa, onSuccess, onCancel }: Props) {
             style={{
               flex: 1,
               padding: "0.5rem 0.75rem",
-              borderRadius: "999px",
+              borderRadius: "0.9rem",
               border: "none",
-              background: "#22c55e",
+              background:
+                "linear-gradient(90deg, #22c55e, #38bdf8)",
               color: "#020617",
               fontSize: "0.85rem",
+              fontWeight: 600,
               cursor:
                 submitting || code.length !== 6 ? "not-allowed" : "pointer",
               opacity: submitting || code.length !== 6 ? 0.5 : 1,
+              boxShadow: "0 10px 26px rgba(34,197,94,0.35)",
             }}
           >
             {submitting ? "Verifying..." : "Verify"}
@@ -141,17 +180,28 @@ export function MfaVerifyPanel({ mfa, onSuccess, onCancel }: Props) {
             onClick={onCancel}
             style={{
               padding: "0.5rem 0.75rem",
-              borderRadius: "999px",
+              borderRadius: "0.9rem",
               border: "1px solid #374151",
               background: "transparent",
               color: "#9ca3af",
               fontSize: "0.8rem",
               cursor: "pointer",
+              minWidth: 80,
             }}
           >
             Back
           </button>
         </div>
+
+        <p
+          style={{
+            marginTop: "0.5rem",
+            fontSize: "0.75rem",
+            opacity: 0.65,
+          }}
+        >
+          Codes change every 30 seconds. Make sure your device time is in sync.
+        </p>
       </form>
     </section>
   );
