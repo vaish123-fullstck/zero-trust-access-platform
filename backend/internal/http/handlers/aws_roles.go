@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,12 +16,14 @@ import (
 type AwsRolesHandler struct {
 	Repo *awsroles.Repository
 	STS  *awssts.Service
+	DB   *sql.DB
 }
 
-func NewAwsRolesHandler(repo *awsroles.Repository, stsSvc *awssts.Service) *AwsRolesHandler {
+func NewAwsRolesHandler(repo *awsroles.Repository, stsSvc *awssts.Service, db *sql.DB) *AwsRolesHandler {
 	return &AwsRolesHandler{
 		Repo: repo,
 		STS:  stsSvc,
+		DB:   db,
 	}
 }
 
@@ -98,6 +101,24 @@ func (h *AwsRolesHandler) CreateAwsSession(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		http.Error(w, "failed to create aws session", http.StatusInternalServerError)
 		return
+	}
+
+	// log activity into access_logs (ignore errors)
+	if h.DB != nil {
+		userRole, _ := middleware.UserRole(r)
+		_, _ = h.DB.Exec(`
+			INSERT INTO access_logs (user_id, role, resource_name, action, decision, path, method, ip)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`,
+			userID,
+			userRole,
+			role.Name,        // resource_name
+			"create_session", // action
+			"allow",          // decision
+			r.URL.Path,
+			r.Method,
+			r.RemoteAddr,
+		)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

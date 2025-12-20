@@ -61,6 +61,14 @@ func (s *Server) routes(mux *http.ServeMux) {
 		),
 	)
 
+	// per‑user activity feed
+	mux.HandleFunc("/me/activity",
+		s.cors(
+			middleware.Auth(s.jwtSecret, s.handleMyActivity),
+		),
+	)
+
+	// admin log viewer
 	mux.HandleFunc("/admin/logs",
 		s.cors(
 			middleware.Auth(s.jwtSecret, s.requireAdmin(s.handleListLogs)),
@@ -85,7 +93,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 		log.Fatalf("failed to init AWS STS: %v", err)
 	}
 	awsRepo := awsroles.NewRepository(s.db)
-	awsHandler := awshandlers.NewAwsRolesHandler(awsRepo, stsSvc)
+
+	// pass DB into handler so it can log activity
+	awsHandler := awshandlers.NewAwsRolesHandler(awsRepo, stsSvc, s.db)
 
 	mux.HandleFunc("/me/aws/roles",
 		s.cors(
@@ -115,7 +125,7 @@ func (s *Server) cors(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Requested-With")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
