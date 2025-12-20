@@ -11,6 +11,7 @@ type Config struct {
 	DBPassword string
 	DBName     string
 	JWTSecret  string
+	AWSRegion  string
 }
 
 func Load() *Config {
@@ -23,6 +24,7 @@ func Load() *Config {
 		DBPassword: getEnv("DB_PASSWORD", "postgres"),
 		DBName:     getEnv("DB_NAME", "zero_trust"),
 		JWTSecret:  getEnv("JWT_SECRET", "change-me-in-env"),
+		AWSRegion:  getEnv("AWS_REGION", "us-east-1"),
 	}
 }
 

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"zero-trust-access-platform/backend/internal/awsroles"
+	"zero-trust-access-platform/backend/internal/awssts"
 	"zero-trust-access-platform/backend/internal/config"
 	awshandlers "zero-trust-access-platform/backend/internal/http/handlers"
 	"zero-trust-access-platform/backend/internal/middleware"
@@ -34,7 +36,6 @@ func New(cfg *config.Config, db *sql.DB, jwtSecret []byte) *Server {
 	}
 }
 
-// routes now takes a mux instead of using the default
 func (s *Server) routes(mux *http.ServeMux) {
 	// public
 	mux.HandleFunc("/health", s.cors(s.handleHealth))
@@ -48,7 +49,6 @@ func (s *Server) routes(mux *http.ServeMux) {
 		),
 	)
 
-	// /users/{id}/role for admins
 	mux.HandleFunc("/users/",
 		s.cors(
 			middleware.Auth(s.jwtSecret, s.requireAdmin(s.handleUpdateUserRole)),
@@ -67,7 +67,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 		),
 	)
 
-	// MFA routes (authenticated)
+	// MFA routes
 	mux.HandleFunc("/auth/mfa/enroll",
 		s.cors(
 			middleware.Auth(s.jwtSecret, s.handleMFAEnroll),
@@ -80,17 +80,26 @@ func (s *Server) routes(mux *http.ServeMux) {
 	)
 
 	// AWS roles (authenticated)
+	stsSvc, err := awssts.NewService(context.Background())
+	if err != nil {
+		log.Fatalf("failed to init AWS STS: %v", err)
+	}
 	awsRepo := awsroles.NewRepository(s.db)
-	awsHandler := awshandlers.NewAwsRolesHandler(awsRepo)
+	awsHandler := awshandlers.NewAwsRolesHandler(awsRepo, stsSvc)
 
 	mux.HandleFunc("/me/aws/roles",
 		s.cors(
 			middleware.Auth(s.jwtSecret, awsHandler.ListMyAwsRoles),
 		),
 	)
+
+	mux.HandleFunc("/me/aws/roles/",
+		s.cors(
+			middleware.Auth(s.jwtSecret, awsHandler.CreateAwsSession),
+		),
+	)
 }
 
-// requireAdmin ensures only admin role can access wrapped handlers
 func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		role, _ := middleware.UserRole(r)
@@ -102,7 +111,6 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// basic CORS wrapper for now
 func (s *Server) cors(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
@@ -131,7 +139,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// Run using an explicit mux
 func (s *Server) Run() error {
 	mux := http.NewServeMux()
 	s.routes(mux)
@@ -141,7 +148,6 @@ func (s *Server) Run() error {
 	return http.ListenAndServe(addr, mux)
 }
 
-// shared JSON writer
 func (s *Server) writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
