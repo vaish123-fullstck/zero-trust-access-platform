@@ -19,7 +19,7 @@ import {
   type MfaState,
 } from "./features/auth/MFAVerifyPanel";
 import { MfaEnrollPanel } from "./features/auth/MfaEnrollPanel";
-import { MfaSettings } from "./features/auth/MfaSettings";
+import { OverviewPage } from "./pages/Overview";
 
 type AuthState = {
   token: string | null;
@@ -167,93 +167,136 @@ function AppShell({
   );
 }
 
-// Pages
+// ---------- My Resources page (with AWS console button) ----------
 
-function OverviewPage({
-  health,
-  users,
-  error,
-  auth,
-  onFinalAuth,
-}: {
-  health: Health | null;
-  users: User[];
-  error: string | null;
-  auth: AuthState;
-  onFinalAuth: (res: AuthResponse) => void;
-}) {
+function MyResourcesPage({ auth }: { auth: AuthState }) {
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!auth.token) return;
+    setLoading(true);
+    import("./lib/api")
+      .then((m) => m.fetchResources(auth.token as string))
+      .then(setResources)
+      .catch((err) => setError(err.message ?? "Failed to load resources"))
+      .finally(() => setLoading(false));
+  }, [auth.token]);
+
+  if (!auth.user || !auth.token) {
+    return <p style={{ fontSize: "0.9rem" }}>Sign in to view your resources.</p>;
+  }
+
+  const handleOpenAwsConsole = async () => {
+    const token = localStorage.getItem("zt_token");
+    if (!token) {
+      alert("No token found, please log in again.");
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        "http://localhost:8080/me/aws/roles/1/session",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Backend error:", res.status, text);
+        alert("Failed to create AWS session");
+        return;
+      }
+
+      const data: { url?: string } = await res.json();
+      if (!data.url) {
+        alert("No URL returned from backend");
+        return;
+      }
+
+      window.open(data.url, "_blank");
+    } catch (err) {
+      console.error(err);
+      alert("Network error calling backend");
+    }
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      <section>
-        <h2 style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>
-          System status
-        </h2>
-        {health ? (
-          <pre
-            style={{
-              background: "#020617",
-              borderRadius: "0.75rem",
-              padding: "0.75rem 1rem",
-              fontSize: "0.8rem",
-              border: "1px solid #1f2933",
-            }}
-          >
-            {JSON.stringify(health, null, 2)}
-          </pre>
-        ) : (
-          <p style={{ fontSize: "0.9rem", opacity: 0.8 }}>Loading health...</p>
-        )}
-      </section>
+    <div>
+      <h2 style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>
+        My Resources
+      </h2>
+      <p
+        style={{
+          fontSize: "0.85rem",
+          opacity: 0.8,
+          marginBottom: "1rem",
+        }}
+      >
+        These are the resources you are allowed to access based on current
+        policies.
+      </p>
 
-      <section>
-        <h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>Users</h2>
-        {users.length === 0 ? (
-          <p style={{ fontSize: "0.9rem", opacity: 0.8 }}>No users loaded yet.</p>
-        ) : (
-          <ul
-            style={{
-              listStyle: "none",
-              padding: 0,
-              margin: 0,
-              display: "grid",
-              gap: "0.5rem",
-            }}
-          >
-            {users.map((u) => (
-              <li
-                key={u.id}
-                style={{
-                  padding: "0.5rem 0.75rem",
-                  borderRadius: "0.5rem",
-                  border: "1px solid #1f2933",
-                  background: "#020617",
-                  fontSize: "0.85rem",
-                }}
-              >
-                {u.full_name} ({u.email}) – {u.role}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <div style={{ marginBottom: "1rem" }}>
+        <button
+          onClick={handleOpenAwsConsole}
+          style={{
+            fontSize: "0.85rem",
+            padding: "0.5rem 1rem",
+            borderRadius: "999px",
+            border: "1px solid #38bdf8",
+            background: "transparent",
+            color: "#e5e7eb",
+            cursor: "pointer",
+          }}
+        >
+          Open AWS Console
+        </button>
+      </div>
 
-      {auth.user && auth.token && (
-        <section>
-          <h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
-            Security
-          </h2>
-          <MfaSettings
-            token={auth.token}
-            user={auth.user}
-            onFinalAuth={onFinalAuth}
-          />
-        </section>
+      {loading && <p>Loading...</p>}
+      {error && <p style={{ color: "#f97316" }}>{error}</p>}
+
+      {!loading && !error && (
+        <div
+          style={{
+            display: "grid",
+            gap: "1rem",
+            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+          }}
+        >
+          {resources.map((r) => (
+            <div
+              key={r.id}
+              style={{
+                padding: "1rem",
+                borderRadius: "0.75rem",
+                border: "1px solid #1f2933",
+                background: "#020617",
+                fontSize: "0.85rem",
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>
+                {r.name}
+              </div>
+              <div style={{ opacity: 0.75 }}>{r.type}</div>
+              <div style={{ marginTop: "0.5rem", fontSize: "0.8rem" }}>
+                Sensitivity: <strong>{r.sensitivity}</strong>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
-
-      {error && <p style={{ color: "#f97316" }}>Error: {error}</p>}
     </div>
   );
 }
+
+// ---------- Users page ----------
 
 function UsersPage({
   auth,
@@ -312,77 +355,7 @@ function UsersPage({
   );
 }
 
-function MyResourcesPage({ auth }: { auth: AuthState }) {
-  const [resources, setResources] = useState<Resource[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!auth.token) return;
-    setLoading(true);
-    import("./lib/api")
-      .then((m) => m.fetchResources(auth.token as string))
-      .then(setResources)
-      .catch((err) => setError(err.message ?? "Failed to load resources"))
-      .finally(() => setLoading(false));
-  }, [auth.token]);
-
-  if (!auth.user || !auth.token) {
-    return <p style={{ fontSize: "0.9rem" }}>Sign in to view your resources.</p>;
-  }
-
-  return (
-    <div>
-      <h2 style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>My Resources</h2>
-      <p
-        style={{
-          fontSize: "0.85rem",
-          opacity: 0.8,
-          marginBottom: "1rem",
-        }}
-      >
-        These are the resources you are allowed to access based on current
-        policies.
-      </p>
-
-      {loading && <p>Loading...</p>}
-      {error && <p style={{ color: "#f97316" }}>{error}</p>}
-
-      {!loading && !error && (
-        <div
-          style={{
-            display: "grid",
-            gap: "1rem",
-            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-          }}
-        >
-          {resources.map((r) => (
-            <div
-              key={r.id}
-              style={{
-                padding: "1rem",
-                borderRadius: "0.75rem",
-                border: "1px solid #1f2933",
-                background: "#020617",
-                fontSize: "0.85rem",
-              }}
-            >
-              <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>
-                {r.name}
-              </div>
-              <div style={{ opacity: 0.75 }}>{r.type}</div>
-              <div style={{ marginTop: "0.5rem", fontSize: "0.8rem" }}>
-                Sensitivity: <strong>{r.sensitivity}</strong>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Root App
+// ---------- Root App ----------
 
 const App: React.FC = () => {
   const [health, setHealth] = useState<Health | null>(null);
@@ -465,7 +438,6 @@ const App: React.FC = () => {
         return;
       }
 
-      // Fallback (should not happen with mandatory MFA)
       handleFinalAuth(res);
     } catch (err: any) {
       setError(err.message ?? "Login failed");
@@ -476,9 +448,6 @@ const App: React.FC = () => {
     e.preventDefault();
     try {
       const res = await signup(fullName, email, password);
-      // With your current backend, signup returns a token.
-      // You can either accept that as fully logged-in or
-      // force a fresh login+MFA. For now, keep as-is:
       handleFinalAuth(res);
     } catch (err: any) {
       setError(err.message ?? "Signup failed");
@@ -509,9 +478,7 @@ const App: React.FC = () => {
 
   const isAuthed = !!auth.user && !!auth.token;
 
-  // ---------- Unauthenticated: full-screen auth (login/signup + MFA) ----------
   if (!isAuthed) {
-    // helper to start enrollment during login MFA
     const startLoginEnroll = async () => {
       if (!mfa.tempToken) return;
       try {
@@ -651,7 +618,6 @@ const App: React.FC = () => {
                   otpauthUrl={enrollData.otpauth_url}
                   secret={enrollData.secret}
                   onContinue={() => {
-                    // after showing QR, go to verify
                     setNeedsEnroll(false);
                   }}
                 />
@@ -685,7 +651,7 @@ const App: React.FC = () => {
     );
   }
 
-  // ---------- Authenticated: console shell + routes ----------
+  // Authenticated: console shell + routes
   return (
     <AppShell auth={auth} onLogout={handleLogout}>
       <Routes>
@@ -697,7 +663,6 @@ const App: React.FC = () => {
               users={users}
               error={error}
               auth={auth}
-              onFinalAuth={handleFinalAuth}
             />
           }
         />
