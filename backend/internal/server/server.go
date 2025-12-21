@@ -42,7 +42,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/auth/signup", s.cors(s.handleSignup))
 	mux.HandleFunc("/auth/login", s.cors(s.handleLogin))
 
-	// protected
+	// protected: users
 	mux.HandleFunc("/users",
 		s.cors(
 			middleware.Auth(s.jwtSecret, s.handleListUsers),
@@ -55,13 +55,14 @@ func (s *Server) routes(mux *http.ServeMux) {
 		),
 	)
 
+	// protected: resources
 	mux.HandleFunc("/resources",
 		s.cors(
 			middleware.Auth(s.jwtSecret, s.handleListResources),
 		),
 	)
 
-	// per‑user activity feed
+	// per-user activity feed
 	mux.HandleFunc("/me/activity",
 		s.cors(
 			middleware.Auth(s.jwtSecret, s.handleMyActivity),
@@ -72,6 +73,20 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/logs",
 		s.cors(
 			middleware.Auth(s.jwtSecret, s.requireAdmin(s.handleListLogs)),
+		),
+	)
+
+	// ---------- NEW: Admin Policies ----------
+	mux.HandleFunc("/admin/policies/aws-roles",
+		s.cors(
+			middleware.Auth(s.jwtSecret, s.requireAdmin(s.handleAwsRolePolicies)),
+		),
+	)
+
+	// ---------- NEW: Audit stats for chart ----------
+	mux.HandleFunc("/admin/audit/stats",
+		s.cors(
+			middleware.Auth(s.jwtSecret, s.requireAdmin(s.handleAuditStats)),
 		),
 	)
 
@@ -87,14 +102,20 @@ func (s *Server) routes(mux *http.ServeMux) {
 		),
 	)
 
-	// AWS roles (authenticated)
+	// ---------- AWS multi-account roles ----------
+
+	// STS client used to assume any allowed role.
 	stsSvc, err := awssts.NewService(context.Background())
 	if err != nil {
 		log.Fatalf("failed to init AWS STS: %v", err)
 	}
+
+	// Repository for aws_roles + user_aws_roles.
 	awsRepo := awsroles.NewRepository(s.db)
 
-	// pass DB into handler so it can log activity
+	// Handler that exposes:
+	//  - GET  /me/aws/roles
+	//  - POST /me/aws/roles/{id}/session
 	awsHandler := awshandlers.NewAwsRolesHandler(awsRepo, stsSvc, s.db)
 
 	mux.HandleFunc("/me/aws/roles",
@@ -103,11 +124,93 @@ func (s *Server) routes(mux *http.ServeMux) {
 		),
 	)
 
+	// Uses path parsing inside CreateAwsSession to extract {id}.
 	mux.HandleFunc("/me/aws/roles/",
 		s.cors(
 			middleware.Auth(s.jwtSecret, awsHandler.CreateAwsSession),
 		),
 	)
+}
+
+// ---------- NEW: Admin Policies Handler ----------
+// ---------- NEW: Admin Policies Handler ----------
+// ---------- NEW: Admin Policies Handler ----------
+func (s *Server) handleAwsRolePolicies(w http.ResponseWriter, r *http.Request) {
+	awsRepo := awsroles.NewRepository(s.db)
+
+	// Hardcoded app role mappings (for demo - matches your repo logic)
+	appRoles := []string{"admin", "user", "devops"}
+
+	// Local response shape; no dependency on handler package
+	type roleDTO struct {
+		ID          int64  `json:"id"`
+		Name        string `json:"name"`
+		Env         string `json:"env"`
+		RiskLevel   string `json:"risk_level"`
+		Description string `json:"description"`
+	}
+
+	policies := make(map[string][]roleDTO)
+
+	for _, appRole := range appRoles {
+		roles, err := awsRepo.ListForAppRole(r.Context(), appRole)
+		if err != nil {
+			http.Error(w, "failed to list roles for app role", http.StatusInternalServerError)
+			return
+		}
+
+		out := make([]roleDTO, 0, len(roles))
+		for _, role := range roles {
+			out = append(out, roleDTO{
+				ID:          role.ID,
+				Name:        role.Name,
+				Env:         role.Env,
+				RiskLevel:   string(role.RiskLevel),
+				Description: role.Description,
+			})
+		}
+
+		policies[appRole] = out
+	}
+
+	s.writeJSON(w, http.StatusOK, policies)
+}
+
+// ---------- NEW: Audit Stats for Chart ----------
+// NEW: Audit Stats for Chart
+func (s *Server) handleAuditStats(w http.ResponseWriter, r *http.Request) {
+	type statRow struct {
+		Decision string `json:"decision"`
+		Count    int    `json:"count"`
+	}
+
+	rows, err := s.db.Query(`
+        SELECT decision, COUNT(*) as count
+        FROM access_logs
+        WHERE created_at > NOW() - INTERVAL '30 days'
+        GROUP BY decision
+    `)
+	if err != nil {
+		http.Error(w, "failed to fetch audit stats", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var stats []statRow
+	for rows.Next() {
+		var sRow statRow
+		if err := rows.Scan(&sRow.Decision, &sRow.Count); err != nil {
+			http.Error(w, "failed to scan audit stats", http.StatusInternalServerError)
+			return
+		}
+		stats = append(stats, sRow)
+	}
+	if err := rows.Err(); err != nil {
+		http.Error(w, "failed to read audit stats", http.StatusInternalServerError)
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, stats)
 }
 
 func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {

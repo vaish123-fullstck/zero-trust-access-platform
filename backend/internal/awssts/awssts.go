@@ -13,12 +13,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
+// Service wraps an STS client and region configuration.
 type Service struct {
 	sts    *sts.Client
 	region string
 }
 
 // NewService loads default AWS config (from env, IAM role, etc.).
+// It falls back to ap-south-1 if AWS_REGION is not set.
 func NewService(ctx context.Context) (*Service, error) {
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
@@ -36,7 +38,8 @@ func NewService(ctx context.Context) (*Service, error) {
 	}, nil
 }
 
-// AssumeRoleAndConsoleURL assumes the given role ARN and returns a console sign-in URL.
+// AssumeRoleAndConsoleURL assumes the given role ARN and returns an AWS
+// console sign-in URL for that role using the federation endpoint.
 func (s *Service) AssumeRoleAndConsoleURL(
 	ctx context.Context,
 	roleARN string,
@@ -54,7 +57,7 @@ func (s *Service) AssumeRoleAndConsoleURL(
 		DurationSeconds: aws.Int32(durationSeconds),
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("assume role: %w", err)
 	}
 
 	creds := out.Credentials
@@ -62,14 +65,14 @@ func (s *Service) AssumeRoleAndConsoleURL(
 		return "", fmt.Errorf("assume role returned no credentials")
 	}
 
-	// 2) Build a JSON session object for federation endpoint
+	// 2) Build a JSON session object for the federation endpoint
 	sessionJSON, err := json.Marshal(map[string]string{
 		"sessionId":    aws.ToString(creds.AccessKeyId),
 		"sessionKey":   aws.ToString(creds.SecretAccessKey),
 		"sessionToken": aws.ToString(creds.SessionToken),
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal session json: %w", err)
 	}
 
 	// 3) Call federation endpoint to get a sign-in token
@@ -80,17 +83,21 @@ func (s *Service) AssumeRoleAndConsoleURL(
 		url.QueryEscape(string(sessionJSON)),
 	)
 
-	resp, err := http.Get(getTokenURL)
+	resp, err := http.Get(getTokenURL) //nolint:gosec // AWS federation endpoint
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("get signin token: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("federation endpoint status %d", resp.StatusCode)
+	}
 
 	var tokenResp struct {
 		SigninToken string `json:"SigninToken"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return "", err
+		return "", fmt.Errorf("decode signin token: %w", err)
 	}
 	if tokenResp.SigninToken == "" {
 		return "", fmt.Errorf("empty SigninToken from federation endpoint")

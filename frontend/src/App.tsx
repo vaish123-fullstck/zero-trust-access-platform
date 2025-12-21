@@ -1,5 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Routes, Route, Link, useLocation } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  Link,
+  useLocation,
+} from "react-router-dom";
+
 import {
   fetchHealth,
   login,
@@ -8,12 +14,16 @@ import {
   type AuthUser,
   type AuthResponse,
   type Resource,
+  type AwsRole,
+  fetchAwsRoles,
+  createAwsSession,
 } from "./lib/api";
 import { fetchUsers, updateUserRole } from "./lib/users";
 import type { User } from "./lib/users";
 
 import { LoginForm } from "./features/auth/LoginForm";
 import { SignupForm } from "./features/auth/SignUpForm";
+import { PolicyEditorPage } from "./pages/PolicyEditorPage";
 import {
   MfaVerifyPanel,
   type MfaState,
@@ -100,7 +110,7 @@ function AppShell({
           </p>
         </div>
 
-        <nav
+      <nav
           style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}
         >
           <NavItem to="/" label="Overview" current={location.pathname === "/"} />
@@ -114,7 +124,15 @@ function AppShell({
             label="Users"
             current={location.pathname.startsWith("/users")}
           />
-        </nav>
+        {auth.user?.role === "admin" && (                    // ← ADD
+          <NavItem                                        // ← ADD
+            to="/admin/policies"                          // ← ADD
+            label="Policies"                              // ← ADD
+            current={location.pathname === "/admin/policies"} // ← ADD
+          />                                              // ← ADD
+        )}                                                // ← ADD
+      </nav>
+
 
         <div style={{ marginTop: "auto", fontSize: "0.8rem", opacity: 0.7 }}>
           Zero Trust Access Platform
@@ -167,12 +185,33 @@ function AppShell({
   );
 }
 
-// ---------- My Resources page (with AWS console button) ----------
+// ---------- Guard for admin-only pages ----------
+
+function AdminOnly({
+  auth,
+  children,
+}: {
+  auth: AuthState;
+  children: React.ReactNode;
+}) {
+  if (!auth.user || auth.user.role !== "admin") {
+    return (
+      <p style={{ fontSize: "0.9rem" }}>
+        You must be an admin to view this page.
+      </p>
+    );
+  }
+  return <>{children}</>;
+}
+
+// ---------- My Resources page (with AWS multi-account) ----------
 
 function MyResourcesPage({ auth }: { auth: AuthState }) {
   const [resources, setResources] = useState<Resource[]>([]);
+  const [awsRoles, setAwsRoles] = useState<AwsRole[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [awsError, setAwsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!auth.token) return;
@@ -184,45 +223,38 @@ function MyResourcesPage({ auth }: { auth: AuthState }) {
       .finally(() => setLoading(false));
   }, [auth.token]);
 
+  // Load AWS roles available to this user
+  useEffect(() => {
+    if (!auth.token) {
+      setAwsRoles([]);
+      return;
+    }
+    setAwsError(null);
+    fetchAwsRoles(auth.token)
+      .then(setAwsRoles)
+      .catch((err) => setAwsError(err.message ?? "Failed to load AWS roles"));
+  }, [auth.token]);
+
   if (!auth.user || !auth.token) {
     return <p style={{ fontSize: "0.9rem" }}>Sign in to view your resources.</p>;
   }
 
-  const handleOpenAwsConsole = async () => {
-    const token = localStorage.getItem("zt_token");
-    if (!token) {
-      alert("No token found, please log in again.");
-      return;
-    }
-
+  const handleOpenAwsConsole = async (roleId: number) => {
     try {
-      const res = await fetch(
-        "http://localhost:8080/me/aws/roles/1/session",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
-
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("Backend error:", res.status, text);
-        alert("Failed to create AWS session");
+      const token = localStorage.getItem("zt_token");
+      if (!token) {
+        alert("No token found, please log in again.");
         return;
       }
-
-      const data: { url?: string } = await res.json();
+      const data = await createAwsSession(token, roleId);
       if (!data.url) {
         alert("No URL returned from backend");
         return;
       }
-
       window.open(data.url, "_blank");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Network error calling backend");
+      alert(err.message ?? "Network error calling backend");
     }
   };
 
@@ -242,22 +274,74 @@ function MyResourcesPage({ auth }: { auth: AuthState }) {
         policies.
       </p>
 
-      <div style={{ marginBottom: "1rem" }}>
-        <button
-          onClick={handleOpenAwsConsole}
-          style={{
-            fontSize: "0.85rem",
-            padding: "0.5rem 1rem",
-            borderRadius: "999px",
-            border: "1px solid #38bdf8",
-            background: "transparent",
-            color: "#e5e7eb",
-            cursor: "pointer",
-          }}
-        >
-          Open AWS Console
-        </button>
-      </div>
+      {/* AWS accounts & roles section */}
+      <section style={{ marginBottom: "1.5rem" }}>
+        <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>
+          AWS accounts & roles
+        </h3>
+        {awsError && (
+          <p style={{ color: "#f97316", fontSize: "0.85rem" }}>{awsError}</p>
+        )}
+        {awsRoles.length === 0 && !awsError ? (
+          <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+            No AWS roles assigned to your identity.
+          </p>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gap: "0.75rem",
+              gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+            }}
+          >
+            {awsRoles.map((role) => (
+              <div
+                key={role.id}
+                style={{
+                  padding: "0.9rem 1rem",
+                  borderRadius: "0.75rem",
+                  border: "1px solid #1f2933",
+                  background: "#020617",
+                  fontSize: "0.85rem",
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>
+                  {role.name}
+                </div>
+                <div style={{ opacity: 0.75, fontSize: "0.8rem" }}>
+                  Env: {role.env} • Risk: {role.risk_level}
+                </div>
+                {role.description && (
+                  <div
+                    style={{
+                      marginTop: "0.35rem",
+                      fontSize: "0.8rem",
+                      opacity: 0.8,
+                    }}
+                  >
+                    {role.description}
+                  </div>
+                )}
+                <button
+                  onClick={() => handleOpenAwsConsole(role.id)}
+                  style={{
+                    marginTop: "0.6rem",
+                    fontSize: "0.8rem",
+                    padding: "0.4rem 0.8rem",
+                    borderRadius: "999px",
+                    border: "1px solid #38bdf8",
+                    background: "transparent",
+                    color: "#e5e7eb",
+                    cursor: "pointer",
+                  }}
+                >
+                  Open AWS Console
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: "#f97316" }}>{error}</p>}
@@ -351,6 +435,199 @@ function UsersPage({
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ---------- Simple admin audit detail page ----------
+
+function AuditDetailPage({ auth }: { auth: AuthState }) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!auth.token || !auth.user) return;
+
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch(
+          `${import.meta.env.VITE_API_BASE_URL}/me/activity`,
+          {
+            headers: {
+              Authorization: `Bearer ${auth.token}`,
+            },
+          },
+        );
+        if (!res.ok) {
+          throw new Error(`failed to load activity: ${res.status}`);
+        }
+        const data = (await res.json()) as any[] | null;
+        setRows(Array.isArray(data) ? data : []);
+      } catch (e: any) {
+        setError(e.message ?? "failed to load activity");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, [auth.token, auth.user]);
+
+  return (
+    <div>
+      <h2 style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>
+        Audit trail
+      </h2>
+      <p style={{ fontSize: "0.85rem", opacity: 0.75, marginBottom: "0.75rem" }}>
+        Time-stamped record of access decisions and user actions.
+      </p>
+
+      {error && (
+        <p style={{ color: "#f97316", fontSize: "0.85rem" }}>{error}</p>
+      )}
+      {loading && <p style={{ fontSize: "0.9rem" }}>Loading audit events…</p>}
+
+      {!loading && !error && rows.length === 0 && (
+        <p style={{ fontSize: "0.9rem", opacity: 0.8 }}>
+          No audit events have been recorded yet.
+        </p>
+      )}
+
+      {!loading && !error && rows.length > 0 && (
+        <div
+          style={{
+            borderRadius: "0.75rem",
+            border: "1px solid #1f2933",
+            background: "#020617",
+            padding: "0.75rem 1rem",
+            overflowX: "auto",
+          }}
+        >
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: "0.8rem",
+            }}
+          >
+            <thead>
+              <tr style={{ textAlign: "left" }}>
+                <th style={{ padding: "0.4rem 0.3rem" }}>Time</th>
+                <th style={{ padding: "0.4rem 0.3rem" }}>Action</th>
+                <th style={{ padding: "0.4rem 0.3rem" }}>Decision</th>
+                <th style={{ padding: "0.4rem 0.3rem" }}>Resource</th>
+                <th style={{ padding: "0.4rem 0.3rem" }}>Method</th>
+                <th style={{ padding: "0.4rem 0.3rem" }}>Path</th>
+                <th style={{ padding: "0.4rem 0.3rem" }}>IP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td
+                    style={{
+                      padding: "0.35rem 0.3rem",
+                      borderTop: "1px solid #1f2933",
+                    }}
+                  >
+                    {new Date(row.created_at).toLocaleString()}
+                  </td>
+                  <td
+                    style={{
+                      padding: "0.35rem 0.3rem",
+                      borderTop: "1px solid #1f2933",
+                    }}
+                  >
+                    {row.action}
+                  </td>
+                  <td
+                    style={{
+                      padding: "0.35rem 0.3rem",
+                      borderTop: "1px solid #1f2933",
+                      color:
+                        row.decision === "allow"
+                          ? "#22c55e"
+                          : row.decision === "deny"
+                          ? "#f97316"
+                          : "#e5e7eb",
+                    }}
+                  >
+                    {row.decision}
+                  </td>
+                  <td
+                    style={{
+                      padding: "0.35rem 0.3rem",
+                      borderTop: "1px solid #1f2933",
+                    }}
+                  >
+                    {row.resource_name}
+                  </td>
+                  <td
+                    style={{
+                      padding: "0.35rem 0.3rem",
+                      borderTop: "1px solid #1f2933",
+                      opacity: 0.8,
+                    }}
+                  >
+                    {row.method}
+                  </td>
+                  <td
+                    style={{
+                      padding: "0.35rem 0.3rem",
+                      borderTop: "1px solid #1f2933",
+                      opacity: 0.8,
+                    }}
+                  >
+                    {row.path}
+                  </td>
+                  <td
+                    style={{
+                      padding: "0.35rem 0.3rem",
+                      borderTop: "1px solid #1f2933",
+                      opacity: 0.8,
+                    }}
+                  >
+                    {row.ip}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- System status detail page ----------
+
+function SystemStatusPage({ health }: { health: Health | null }) {
+  return (
+    <div>
+      <h2 style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>
+        System status
+      </h2>
+      <p style={{ fontSize: "0.85rem", opacity: 0.75, marginBottom: "0.75rem" }}>
+        Detailed view of backend health checks and service status.
+      </p>
+      {health ? (
+        <pre
+          style={{
+            background: "#020617",
+            borderRadius: "0.75rem",
+            padding: "0.75rem 1rem",
+            fontSize: "0.8rem",
+            border: "1px solid #1f2933",
+          }}
+        >
+          {JSON.stringify(health, null, 2)}
+        </pre>
+      ) : (
+        <p style={{ fontSize: "0.9rem", opacity: 0.8 }}>Loading health…</p>
+      )}
     </div>
   );
 }
@@ -482,13 +759,16 @@ const App: React.FC = () => {
     const startLoginEnroll = async () => {
       if (!mfa.tempToken) return;
       try {
-        const res = await fetch("http://localhost:8080/auth/mfa/enroll", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${mfa.tempToken}`,
+        const res = await fetch(
+          `${import.meta.env.VITE_API_BASE_URL}/auth/mfa/enroll`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${mfa.tempToken}`,
+            },
           },
-        });
+        );
         if (!res.ok) {
           setError("Failed to start MFA enrollment.");
           return;
@@ -677,6 +957,31 @@ const App: React.FC = () => {
             />
           }
         />
+        <Route
+          path="/admin/audit"
+          element={
+            <AdminOnly auth={auth}>
+              <AuditDetailPage auth={auth} />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="/admin/system"
+          element={
+            <AdminOnly auth={auth}>
+              <SystemStatusPage health={health} />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="/admin/policies"
+          element={
+            <AdminOnly auth={auth}>
+              <PolicyEditorPage auth={auth} />
+            </AdminOnly>
+          }
+        />
+
       </Routes>
       {error && (
         <p

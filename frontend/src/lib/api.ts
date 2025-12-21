@@ -22,7 +22,6 @@ export type AuthResponse = {
 };
 
 // Resources
-
 export type Resource = {
   id: number;
   name: string;
@@ -43,8 +42,76 @@ export async function fetchResources(token: string): Promise<Resource[]> {
   return res.json();
 }
 
-// Health & auth
+// AWS roles
+export type AwsRole = {
+  id: number;
+  name: string;
+  env: string;
+  risk_level: string;
+  description: string;
+};
 
+export async function fetchAwsRoles(token: string): Promise<AwsRole[]> {
+  const res = await fetch(`${API_BASE_URL}/me/aws/roles`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to load AWS roles: ${res.status}`);
+  }
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createAwsSession(
+  token: string,
+  roleId: number,
+): Promise<{ url?: string }> {
+  const res = await fetch(`${API_BASE_URL}/me/aws/roles/${roleId}/session`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to create AWS session: ${res.status}`);
+  }
+  return res.json();
+}
+
+// ---------- NEW: Admin Policies ----------
+export async function fetchAwsRolePolicies(token: string): Promise<Record<string, AwsRole[]>> {
+  const res = await fetch(`${API_BASE_URL}/admin/policies/aws-roles`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to load policies: ${res.status}`);
+  }
+  return res.json();
+}
+
+// ---------- NEW: Audit Stats for Chart ----------
+export type AuditStat = {
+  decision: string;
+  count: number;
+};
+
+export async function fetchAuditStats(token: string): Promise<AuditStat[]> {
+  const res = await fetch(`${API_BASE_URL}/admin/audit/stats`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to load audit stats: ${res.status}`);
+  }
+  return res.json();
+}
+
+// Health & auth
 export async function fetchHealth(): Promise<Health> {
   const res = await fetch(`${API_BASE_URL}/health`);
   if (!res.ok) {
