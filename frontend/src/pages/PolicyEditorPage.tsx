@@ -1,5 +1,6 @@
 // frontend/src/pages/PolicyEditorPage.tsx
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+
 import { fetchAwsRolePolicies, type AwsRole } from "../lib/api";
 
 type AuthState = {
