@@ -101,7 +101,7 @@ export function OverviewPage({ health, users, error, auth }: OverviewProps) {
       auditStats.find((s) => s.decision === "allow")?.count || 0;
     const denyCount = auditStats.find((s) => s.decision === "deny")?.count || 0;
     const total = allowCount + denyCount;
-    const maxHeight = 80;
+    const maxHeight = 70; // slightly shorter so it does not hit the label
 
     if (statsLoading) {
       return (
@@ -140,7 +140,11 @@ export function OverviewPage({ health, users, error, auth }: OverviewProps) {
 
     return (
       <div
-        style={{ position: "relative", height: maxHeight + 40, padding: "1rem 0" }}
+        style={{
+          position: "relative",
+          height: maxHeight + 50,
+          padding: "1rem 0",
+        }}
       >
         <div
           style={{
@@ -148,7 +152,7 @@ export function OverviewPage({ health, users, error, auth }: OverviewProps) {
             gap: "2rem",
             justifyContent: "center",
             alignItems: "flex-end",
-            height: maxHeight,
+            height: maxHeight + 10,
           }}
         >
           <div
@@ -156,7 +160,8 @@ export function OverviewPage({ health, users, error, auth }: OverviewProps) {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "0.25rem",
+              gap: "0.35rem",
+              marginBottom: 4,
             }}
           >
             <div
@@ -185,7 +190,8 @@ export function OverviewPage({ health, users, error, auth }: OverviewProps) {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "0.25rem",
+              gap: "0.35rem",
+              marginBottom: 4,
             }}
           >
             <div
@@ -208,16 +214,6 @@ export function OverviewPage({ health, users, error, auth }: OverviewProps) {
               {denyCount}
             </div>
           </div>
-        </div>
-        <div
-          style={{
-            textAlign: "center",
-            fontSize: "0.75rem",
-            opacity: 0.7,
-            marginTop: "0.5rem",
-          }}
-        >
-          Access decisions (last 30 days)
         </div>
       </div>
     );
@@ -299,7 +295,7 @@ export function OverviewPage({ health, users, error, auth }: OverviewProps) {
                     margin: 0,
                   }}
                 >
-                  Access decisions (30 days)
+                  -
                 </p>
                 <AuditChart />
               </div>
