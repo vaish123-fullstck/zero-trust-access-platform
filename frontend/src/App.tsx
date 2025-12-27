@@ -633,7 +633,6 @@ function SystemStatusPage({ health }: { health: Health | null }) {
 }
 
 // ---------- Root App ----------
-
 const App: React.FC = () => {
   const [health, setHealth] = useState<Health | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -669,15 +668,17 @@ const App: React.FC = () => {
     }
   }, []);
 
+  /* 🔐 FIXED: admin-only users fetch */
   useEffect(() => {
-    if (!auth.token) {
+    if (!auth.token || auth.user?.role !== "admin") {
       setUsers([]);
       return;
     }
+
     fetchUsers(auth.token)
       .then(setUsers)
       .catch((err) => setError(err.message));
-  }, [auth.token]);
+  }, [auth.token, auth.user]);
 
   const handleFinalAuth = (res: AuthResponse) => {
     if (!res.token || !res.user) {
