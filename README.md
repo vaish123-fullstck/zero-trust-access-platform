@@ -86,6 +86,33 @@ VITE_API_BASE_URL=http://localhost:8080
 ## Login page 
 ![image alt](https://github.com/vaish123-fullstck/zero-trust-access-platform/blob/2d26354dc0ea69995e09da8e3267c85a326fa9bf/1.png)
 
+## MFA
+![image alt](https://github.com/vaish123-fullstck/zero-trust-access-platform/blob/d3bc9a4ff3b5565430b68920e7afdb5c4e3c74b8/2.png)
+
+## Console Page
+![image alt](https://github.com/vaish123-fullstck/zero-trust-access-platform/blob/d3bc9a4ff3b5565430b68920e7afdb5c4e3c74b8/3.png)
+
+## Audit trail 
+# The audit trail provides complete visibility into every access decision made by the Zero Trust policy engine
+- Every protected request (/resources, /me/aws/roles, admin endpoints) is automatically logged with:
+```
+  {
+  "id": 123,
+  "user_id": 456,
+  "action": "view_resource", 
+  "decision": "allow",        # or "deny"
+  "resource_name": "customer-db",
+  "method": "GET",
+  "path": "/resources",
+  "ip": "127.0.0.1",
+  "policy_name": "high_sensitivity",
+  "reason": "admin role + MFA verified",
+  "created_at": "2025-12-31T21:00:00Z"
+}
+```
+![image alt](https://github.com/vaish123-fullstck/zero-trust-access-platform/blob/e4655b606d5b782618e7a86ed2050f6d2ed57d04/4.png)
+
+
 
 # Contributing
 
@@ -100,6 +127,7 @@ Pull requests are welcome. For major changes such as: [file:204]
 - New admin pages (e.g. richer audit explorer or policy editor)
 
 please open an issue first to discuss what you would like to change. Make sure backend (backend/internal/*) and frontend (frontend/src/*) remain consistent with the Zero Trust model (JWT everywhere, least privilege, audited decisions).
+
 
 
 
