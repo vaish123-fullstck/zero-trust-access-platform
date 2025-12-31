@@ -83,6 +83,9 @@ VITE_API_BASE_URL=http://localhost:8080
 ```
 # SAMPLE WORKFLOW SNAPSHOTS
 
+## Login page 
+1.png
+
 
 
 # Contributing
@@ -98,6 +101,7 @@ Pull requests are welcome. For major changes such as: [file:204]
 - New admin pages (e.g. richer audit explorer or policy editor)
 
 please open an issue first to discuss what you would like to change. Make sure backend (backend/internal/*) and frontend (frontend/src/*) remain consistent with the Zero Trust model (JWT everywhere, least privilege, audited decisions).
+
 
 
 
