@@ -84,7 +84,7 @@ VITE_API_BASE_URL=http://localhost:8080
 # SAMPLE WORKFLOW SNAPSHOTS
 
 ## Login page 
-https://github.com/vaish123-fullstck/zero-trust-access-platform/blob/2d26354dc0ea69995e09da8e3267c85a326fa9bf/1.png
+![image alt](https://github.com/vaish123-fullstck/zero-trust-access-platform/blob/2d26354dc0ea69995e09da8e3267c85a326fa9bf/1.png)
 
 
 # Contributing
@@ -100,6 +100,7 @@ Pull requests are welcome. For major changes such as: [file:204]
 - New admin pages (e.g. richer audit explorer or policy editor)
 
 please open an issue first to discuss what you would like to change. Make sure backend (backend/internal/*) and frontend (frontend/src/*) remain consistent with the Zero Trust model (JWT everywhere, least privilege, audited decisions).
+
 
 
 
