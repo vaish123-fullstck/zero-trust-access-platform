@@ -112,9 +112,15 @@ VITE_API_BASE_URL=http://localhost:8080
 ```
 ![image alt](https://github.com/vaish123-fullstck/zero-trust-access-platform/blob/e4655b606d5b782618e7a86ed2050f6d2ed57d04/4.png)
 
+# My Resources Page
+
+- The My Resources page demonstrates Zero Trust least privilege by showing only the resources and AWS accounts the current user is explicitly authorized to access.
+![image alt](https://github.com/vaish123-fullstck/zero-trust-access-platform/blob/8bf851f8c845f726837adba50f14a3e46607a91b/5.png)
 
 
-# Contributing
+
+
+# Contributions
 
 Pull requests are welcome. For major changes such as: [file:204]
 
@@ -127,9 +133,6 @@ Pull requests are welcome. For major changes such as: [file:204]
 - New admin pages (e.g. richer audit explorer or policy editor)
 
 please open an issue first to discuss what you would like to change. Make sure backend (backend/internal/*) and frontend (frontend/src/*) remain consistent with the Zero Trust model (JWT everywhere, least privilege, audited decisions).
-
-
-
 
 
 
