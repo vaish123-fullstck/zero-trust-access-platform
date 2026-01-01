@@ -63,6 +63,11 @@ VITE_API_BASE_URL=http://localhost:8080
 #   - Returns a short‑lived AWS console URL:
 #     { "url": "https://signin.aws.amazon.com/console/..." }
 ```
+# Behaviour
+- Verifies the AWS role is allowed for the user’s app role.
+- Uses AWS STS AssumeRole.
+- Returns a short-lived AWS console URL.
+- Logs the access decision.
 ## Admin AWS role policies
 ```
 # Request:
@@ -81,6 +86,20 @@ VITE_API_BASE_URL=http://localhost:8080
 #   ]
 # }
 ```
+
+# Authorization model
+## This system does NOT rely on static RBAC alone.
+## Instead, access decisions are made using a policy engine that evaluates:
+- User role
+
+- Requested action
+
+- Resource type
+
+- Resource sensitivity
+
+- MFA state
+
 # SAMPLE WORKFLOW SNAPSHOTS
 
 ## Login page 
@@ -133,6 +152,7 @@ Pull requests are welcome. For major changes such as: [file:204]
 - New admin pages (e.g. richer audit explorer or policy editor)
 
 please open an issue first to discuss what you would like to change. Make sure backend (backend/internal/*) and frontend (frontend/src/*) remain consistent with the Zero Trust model (JWT everywhere, least privilege, audited decisions).
+
 
 
 
